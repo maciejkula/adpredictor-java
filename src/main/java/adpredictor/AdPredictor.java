@@ -72,6 +72,10 @@ public class AdPredictor {
         return this.normal.cdf(this.predictionLocation(1.0, x, this.totalDeviation(x)));
     }
     
+    public double classifyScalar(Vector x) {
+        return this.normal.cdf(this.predictionLocation(1.0, x, this.totalDeviation(x)));
+    }
+    
     public Vector getWeightMeans() {
         return this.mean;
     }
@@ -111,7 +115,12 @@ public class AdPredictor {
     }
 
     private double totalDeviation(Vector vector) {
-        return Math.sqrt(this.beta + this.variance.dot(vector));
+        double v = this.beta;
+        for (Element elem : vector.nonZeroes()) {
+            v += Math.abs(elem.get()) * this.variance.getQuick(elem.index());
+        }
+        return Math.sqrt(v);
+        //return Math.sqrt(this.beta + this.variance.dot(vector));
     }
 
     private double klDivergence(double weightMean, double weightVariance) {
