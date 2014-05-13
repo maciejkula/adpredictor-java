@@ -11,7 +11,8 @@ public class TestAccuracy extends TestCase {
     public void testAccuracy() {
         DataReader reader = new DataReader("newsgroups.json");
 
-        Adpredictor model = new Adpredictor(130107, 1.0, 1.0, 0.01);
+        AdPredictor model = new AdPredictor(130107, 0.2, 0.05, 0.05);
+        model.lambda(0.0000001);
 
         double accuratelyClassified = 0.0;
         int allClassified = 0;
@@ -27,6 +28,8 @@ public class TestAccuracy extends TestCase {
             model.train(datapoint.classification, x);
         }
         System.out.println("Accuracy: " + accuratelyClassified / allClassified);
+        System.out.println(model.getWeightMeans().getNumNonZeroElements());
+        // System.out.println(model.getWeightVariances());
     }
 
 }
