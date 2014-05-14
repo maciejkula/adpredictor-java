@@ -1,5 +1,7 @@
 package adpredictor;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 import org.apache.mahout.math.DenseVector;
@@ -86,6 +88,8 @@ public class AdPredictor {
 
     public void regularize() {
         double eps = this.epsilon;
+        List<Integer> indicesToRemove = new ArrayList<Integer>();
+        
         for (Element mean : this.mean.nonZeroes()) {
             
             // Pull back towards the prior
@@ -94,11 +98,16 @@ public class AdPredictor {
             mean.set(var * ((1 - eps) * mean.get() / var));
             variance.set((this.priorVariance * var) / ((1 - eps) * this.priorVariance + eps * var));
             
-            // Prune
+            // Identify weights to prune
             if (this.klDivergence(mean.get(), var) * this.cardinality < this.lambda) {
-                mean.set(0.0);
-                variance.set(this.priorVariance);
+                indicesToRemove.add(mean.index());
             }
+        }
+        
+        // Prune
+        for (Integer idx : indicesToRemove) {
+            this.mean.setQuick(idx, 0.0);
+            this.variance.setQuick(idx, this.priorVariance);
         }
     }
 
