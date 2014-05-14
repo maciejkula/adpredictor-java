@@ -1,16 +1,22 @@
 package adpredictor;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
+import org.apache.hadoop.io.Writable;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.Vector.Element;
+import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.jet.random.Normal;
 
-public class AdPredictor {
+public class AdPredictor implements Writable {
 
     private double beta;
     private double priorVariance;
@@ -20,8 +26,8 @@ public class AdPredictor {
 
     private int regularizationCounter = 0;
 
-    private final int cardinality;
-    private Normal normal;
+    private  int cardinality;
+    private Normal normal = new Normal(0.0, 1.0, new Random());
     private Vector mean;
     private Vector variance;
 
@@ -32,19 +38,24 @@ public class AdPredictor {
         this.epsilon = epsilon;
 
         this.cardinality = cardinality;
-        this.normal = new Normal(0.0, 1.0, new Random());
 
         this.mean = new RandomAccessSparseVector(this.cardinality);
         this.variance = new DenseVector(this.cardinality);
         this.variance.assign(priorVariance);
     }
 
-    public void lambda(double lambda) {
-        this.lambda = lambda;
+    public AdPredictor() {
+        // For deserialization
     }
 
-    public void regularizationStep(int value) {
+    public AdPredictor lambda(double lambda) {
+        this.lambda = lambda;
+        return this;
+    }
+
+    public AdPredictor regularizationStep(int value) {
         this.regularizationStep = value;
+        return this;
     }
 
     public void train(double y, Vector x) {
@@ -73,15 +84,15 @@ public class AdPredictor {
     public double predict(Vector x) {
         return this.normal.cdf(this.predictionLocation(1.0, x, this.totalDeviation(x)));
     }
-    
+
     public double classifyScalar(Vector x) {
         return this.normal.cdf(this.predictionLocation(1.0, x, this.totalDeviation(x)));
     }
-    
+
     public Vector getWeightMeans() {
         return this.mean;
     }
-    
+
     public Vector getWeightVariances() {
         return this.variance;
     }
@@ -89,21 +100,21 @@ public class AdPredictor {
     public void regularize() {
         double eps = this.epsilon;
         List<Integer> indicesToRemove = new ArrayList<Integer>();
-        
+
         for (Element mean : this.mean.nonZeroes()) {
-            
+
             // Pull back towards the prior
             Element variance = this.variance.getElement(mean.index());
             double var = variance.get();
             mean.set(var * ((1 - eps) * mean.get() / var));
             variance.set((this.priorVariance * var) / ((1 - eps) * this.priorVariance + eps * var));
-            
+
             // Identify weights to prune
             if (this.klDivergence(mean.get(), var) * this.cardinality < this.lambda) {
                 indicesToRemove.add(mean.index());
             }
         }
-        
+
         // Prune
         for (Integer idx : indicesToRemove) {
             this.mean.setQuick(idx, 0.0);
@@ -129,13 +140,92 @@ public class AdPredictor {
             v += Math.abs(elem.get()) * this.variance.getQuick(elem.index());
         }
         return Math.sqrt(v);
-        //return Math.sqrt(this.beta + this.variance.dot(vector));
     }
 
     private double klDivergence(double weightMean, double weightVariance) {
         double q = 0.5;
         double p = this.normal.cdf(weightMean / (Math.pow(this.beta, 2) + (this.cardinality - 1)  * this.priorVariance + weightVariance));
         return p * Math.log(p / q) + (1.0 - p) * Math.log((1.0 - p) / (1.0 - q));
+    }
+
+    @Override
+    public void readFields(DataInput input) throws IOException {
+
+        this.priorVariance = input.readDouble();
+        this.beta = input.readDouble();
+        this.epsilon = input.readDouble();
+        this.lambda = input.readDouble();
+
+        this.regularizationCounter = input.readInt();
+        this.regularizationStep = input.readInt();
+        this.cardinality = input.readInt();
+
+        this.mean = VectorWritable.readVector(input);
+        this.variance = VectorWritable.readVector(input); 
+    }
+
+    @Override
+    public void write(DataOutput output) throws IOException {
+        for (double v : Arrays.asList(this.priorVariance, this.beta, this.epsilon, this.lambda)) {
+            output.writeDouble(v);
+        }
+        for (int v : Arrays.asList(this.regularizationCounter, this.regularizationStep, this.cardinality)) {
+            output.writeInt(v);
+        }
+        for (Vector v : Arrays.asList(this.mean, this.variance)) {
+            VectorWritable.writeVector(output, v);
+        }
+
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null) {
+            return false;
+        }
+        if (getClass() != obj.getClass()) {
+            return false;
+        }
+        AdPredictor other = (AdPredictor) obj;
+        if (Double.doubleToLongBits(beta) != Double.doubleToLongBits(other.beta)) {
+            return false;
+        }
+        if (cardinality != other.cardinality) {
+            return false;
+        }
+        if (Double.doubleToLongBits(epsilon) != Double.doubleToLongBits(other.epsilon)) {
+            return false;
+        }
+        if (Double.doubleToLongBits(lambda) != Double.doubleToLongBits(other.lambda)) {
+            return false;
+        }
+        if (mean == null) {
+            if (other.mean != null) {
+                return false;
+            }
+        } else if (mean.minus(other.mean).zSum() != 0.0) {
+            return false;
+        }
+        if (Double.doubleToLongBits(priorVariance) != Double.doubleToLongBits(other.priorVariance)) {
+            return false;
+        }
+        if (regularizationCounter != other.regularizationCounter) {
+            return false;
+        }
+        if (regularizationStep != other.regularizationStep) {
+            return false;
+        }
+        if (variance == null) {
+            if (other.variance != null) {
+                return false;
+            }
+        } else if (variance.minus(other.variance).zSum() != 0.0) {
+            return false;
+        }
+        return true;
     }
 
 }
