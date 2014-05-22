@@ -121,6 +121,17 @@ public class AdPredictor implements Writable {
             this.variance.setQuick(idx, this.priorVariance);
         }
     }
+    
+    public double[] drawWeights () {
+        double[] weights = new double[this.cardinality];
+        
+        for (int i=0; i < this.cardinality; i++) {
+            weights[i] = (new Normal(this.mean.getQuick(i), this.variance.getQuick(i), new Random())).nextDouble();
+        }
+        
+        return weights;
+        
+    }
 
     private double predictionLocation(double y, Vector x, double totalDeviation) {
         return y * x.dot(this.mean) / totalDeviation;
