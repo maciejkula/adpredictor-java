@@ -68,9 +68,9 @@ public class AdPredictor implements Writable {
         for (Element elem : x.nonZeroes()) {
             double variance = this.variance.getQuick(elem.index());
             double meanUpdate =  y * elem.get() * (variance / totalDeviation) * vFunctionValue;
-            double varianceUpdate = variance * (1 - elem.get() * (variance / totalDeviation) * wFunctionValue );
+            double varianceUpdate = variance * (1 - Math.abs(elem.get()) * (variance / totalDeviation) * wFunctionValue );
             this.mean.incrementQuick(elem.index(), meanUpdate);
-            this.variance.setQuick(elem.index(), varianceUpdate);
+            this.variance.setQuick(elem.index(), Math.max(varianceUpdate, 0.000000001));
         }
 
         this.regularizationCounter++;
@@ -121,16 +121,19 @@ public class AdPredictor implements Writable {
             this.variance.setQuick(idx, this.priorVariance);
         }
     }
+
+    public double[] drawWeights(Random randomState) {
+        double[] weights = new double[this.cardinality];
+
+        for (int i=0; i < this.cardinality; i++) {
+            weights[i] = (new Normal(this.mean.getQuick(i), this.variance.getQuick(i), randomState)).nextDouble();
+        }
+
+        return weights;
+    }
     
     public double[] drawWeights () {
-        double[] weights = new double[this.cardinality];
-        
-        for (int i=0; i < this.cardinality; i++) {
-            weights[i] = (new Normal(this.mean.getQuick(i), this.variance.getQuick(i), new Random())).nextDouble();
-        }
-        
-        return weights;
-        
+        return this.drawWeights(new Random());
     }
 
     private double predictionLocation(double y, Vector x, double totalDeviation) {
